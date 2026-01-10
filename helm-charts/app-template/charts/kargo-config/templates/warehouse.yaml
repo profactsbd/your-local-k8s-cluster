@@ -1,0 +1,33 @@
+{{- if .Values.enabled }}
+{{- if .Values.warehouse }}
+---
+#
+# KARGO WAREHOUSE
+# Purpose: Defines source of artifacts (Docker images, Git repos, Helm charts)
+# Renders: When .Values.warehouse is defined
+#
+# What it does:
+# - Watches for new artifacts (image tags, Git commits, chart versions)
+# - Creates Freight resources when new artifacts are discovered
+# - Provides artifacts to stages for promotion
+#
+# Subscription Types:
+# - image: Docker container images
+# - git: Git repository commits
+# - chart: Helm charts
+#
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: {{ .Values.warehouse.name }}
+  namespace: {{ .Values.project.namespace }}
+  labels:
+    {{- include "kargo-config.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.warehouse.subscriptions }}
+  # Sources to watch for new artifacts
+  subscriptions:
+  {{- toYaml .Values.warehouse.subscriptions | nindent 2 }}
+  {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,28 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: main-gateway
+  namespace: istio-system
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  # HTTP server - redirects to HTTPS
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+    tls:
+      httpsRedirect: true
+  # HTTPS server
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - "*"
+    tls:
+      mode: SIMPLE
+      credentialName: local-cluster-tls  # Secret name from Certificate resource

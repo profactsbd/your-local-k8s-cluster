@@ -1,0 +1,30 @@
+{{- if and .Values.enabled .Values.gateway.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "istio-routing.fullname" . }}-test-gateway
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  serviceAccountName: {{ include "istio-routing.fullname" . }}-test
+  containers:
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo "Testing Gateway existence..."
+      kubectl get gateway {{ .Values.gateway.name | default (include "istio-routing.fullname" .) }}
+      if [ $? -eq 0 ]; then
+        echo "✓ Gateway exists"
+        exit 0
+      else
+        echo "✗ Gateway not found"
+        exit 1
+      fi
+  restartPolicy: Never
+{{- end }}

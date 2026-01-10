@@ -1,0 +1,47 @@
+{{- if and .Values.enabled .Values.sidecar.enabled }}
+#
+# ISTIO SIDECAR CONFIGURATION
+# Purpose: Optimizes Envoy proxy resource usage by limiting traffic scope
+# Renders: When both .Values.enabled and .Values.sidecar.enabled are true
+#
+# What it does:
+# - Reduces memory/CPU usage by limiting which services the sidecar knows about
+# - Controls egress (outbound) traffic - which external hosts are accessible
+# - Controls ingress (inbound) traffic - which ports accept traffic
+# - Improves sidecar startup time by reducing configuration size
+#
+# Key concepts:
+# - egress.hosts: Whitelist of services this workload can call (namespace/service format)
+# - outboundTrafficPolicy: ALLOW_ANY (unrestricted) or REGISTRY_ONLY (only mesh services)
+# - ingress: Inbound port configuration (rarely needed, defaults work for most cases)
+# - Use when you have hundreds of services but each workload only calls a few
+#
+apiVersion: networking.istio.io/v1beta1
+kind: Sidecar
+metadata:
+  name: {{ include "istio-routing.fullname" . }}
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+spec:
+  # Selector targets pods with these labels to apply sidecar configuration
+  workloadSelector:
+    labels:
+      {{- include "istio-routing.selectorLabels" . | nindent 6 }}
+  {{- if .Values.sidecar.ingress }}
+  # Ingress configuration for inbound traffic (rarely customized)
+  ingress:
+    {{- toYaml .Values.sidecar.ingress | nindent 4 }}
+  {{- end }}
+  # Egress configuration limits which services this workload can reach
+  # Format: <namespace>/<hostname> or */hostname for all namespaces
+  # Example: ["./my-service.default.svc.cluster.local", "istio-system/*"]
+  egress:
+    {{- toYaml .Values.sidecar.egress | nindent 4 }}
+  {{- if .Values.sidecar.outboundTrafficPolicy }}
+  # Traffic policy for destinations not in egress.hosts
+  # ALLOW_ANY: Allow traffic to any destination (default Istio behavior)
+  # REGISTRY_ONLY: Block traffic to services not in egress.hosts (strict mode)
+  outboundTrafficPolicy:
+    {{- toYaml .Values.sidecar.outboundTrafficPolicy | nindent 4 }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,211 @@
+# Default values for app-template
+# This is a YAML-formatted file.
+
+# Application name
+nameOverride: ""
+fullnameOverride: ""
+
+# Image configuration
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "1.25-alpine"
+
+imagePullSecrets: []
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext: {}
+  # fsGroup: 2000
+
+# Container security context
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 80
+
+# Resource requests and limits
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Horizontal Pod Autoscaler (only works when argo-rollouts is disabled)
+# HPA automatically detects cluster capabilities and uses:
+# - autoscaling/v2 (Kubernetes 1.23+)
+# - autoscaling/v2beta2 (Kubernetes 1.18-1.22)
+# - autoscaling/v2beta1 (Kubernetes <1.18)
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+  # behavior:  # Only supported in autoscaling/v2 and v2beta2
+  #   scaleDown:
+  #     stabilizationWindowSeconds: 300
+  #     policies:
+  #     - type: Percent
+  #       value: 50
+  #       periodSeconds: 15
+  #   scaleUp:
+  #     stabilizationWindowSeconds: 0
+  #     policies:
+  #     - type: Percent
+  #       value: 100
+  #       periodSeconds: 15
+  #     - type: Pods
+  #       value: 2
+  #       periodSeconds: 60
+  #     selectPolicy: Max
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# ============================================
+# Subcharts Configuration
+# ============================================
+
+# Argo Rollouts subchart - Progressive delivery with canary/blue-green deployments
+argo-rollouts:
+  enabled: true
+  replicas: 2
+  strategy:
+    type: canary  # or "blueGreen"
+    canary:
+      steps:
+        - setWeight: 20
+        - pause: {duration: 30s}
+        - setWeight: 40
+        - pause: {duration: 30s}
+        - setWeight: 60
+        - pause: {duration: 30s}
+        - setWeight: 80
+        - pause: {duration: 30s}
+    blueGreen:
+      activeService: active
+      previewService: preview
+      autoPromotionEnabled: false
+      scaleDownDelaySeconds: 30
+  # Inherit image configuration from parent
+  image:
+    repository: nginx
+    pullPolicy: IfNotPresent
+    tag: "1.25-alpine"
+  imagePullSecrets: []
+  serviceAccountName: ""  # Uses parent service account
+  podAnnotations: {}
+  podSecurityContext: {}
+  securityContext: {}
+  service:
+    targetPort: 80
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  env: []
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+  istio:
+    inject: true
+
+# Istio routing subchart
+istio-routing:
+  enabled: true
+  ingress:
+    enabled: true
+    path: /myapp
+    pathType: Prefix
+    gateway: istio-system/main-gateway
+    hosts:
+      - "*"
+  trafficRouting:
+    enabled: false  # Set to true for Argo Rollouts canary deployments
+    stable:
+      weight: 100
+    canary:
+      weight: 0
+  service:
+    port: 80
+
+# Kargo configuration subchart
+kargo-config:
+  enabled: false
+  project:
+    name: default
+    namespace: kargo
+  stages:
+    - name: dev
+      namespace: dev
+      promotionMechanisms:
+        argoCDAppUpdates:
+          - appName: myapp-dev
+            appNamespace: argocd
+    - name: staging
+      namespace: staging
+      requestedFreight:
+        - origin:
+            kind: Warehouse
+            name: myapp-warehouse
+          sources:
+            stages:
+              - dev
+      promotionMechanisms:
+        argoCDAppUpdates:
+          - appName: myapp-staging
+            appNamespace: argocd
+    - name: prod
+      namespace: prod
+      requestedFreight:
+        - origin:
+            kind: Warehouse
+            name: myapp-warehouse
+          sources:
+            stages:
+              - staging
+      promotionMechanisms:
+        argoCDAppUpdates:
+          - appName: myapp-prod
+            appNamespace: argocd

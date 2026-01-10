@@ -1,0 +1,91 @@
+{{- if .Values.enabled }}
+{{- range .Values.stages }}
+---
+#
+# KARGO STAGE: {{ .name }}
+# Purpose: Defines deployment stage in multi-environment promotion pipeline
+# Renders: One Stage resource per entry in .Values.stages array
+#
+# What it does:
+# - Represents an environment in the promotion workflow (dev, staging, prod)
+# - Defines what artifacts (Freight) can be promoted to this stage
+# - Configures promotion mechanisms (Git updates, ArgoCD sync)
+# - Orchestrates multi-step deployments across environments
+# - Tracks promotion history and current state
+#
+# Multi-Stage Pipeline Example:
+# - dev: Auto-promote new commits from main branch
+# - staging: Manual promotion from dev after testing
+# - prod: Manual promotion from staging with approvals
+#
+# Key concepts:
+# - requestedFreight: What artifacts this stage accepts (sources, origins)
+# - promotionTemplate: How to execute promotions (replaces old promotionMechanisms)
+# - steps: Sequence of tasks to run (references PromotionTask resources)
+# - uses: Built-in tasks (git-commit, argocd-update, etc.)
+#
+# Promotion Flow:
+# 1. Freight (artifact bundle) created from Git commit/image/chart
+# 2. Stage requests specific Freight (by origin, stage, or warehouse)
+# 3. Promotion approved (manual or automatic)
+# 4. Kargo executes promotion mechanisms (Git PR, ArgoCD sync)
+# 5. Stage tracks deployed Freight version
+#
+# Integration Points:
+# - Git: Kargo updates manifests and creates PRs
+# - ArgoCD: Auto-sync applications after promotion
+# - Argo Rollouts: Progressive delivery within each stage
+#
+# Monitoring:
+# - Kargo UI: http://localhost:8081 (via port-forward)
+# - kubectl get stages -n <namespace>
+# - kubectl describe stage <name> -n <namespace>
+#
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: {{ .name }}
+  namespace: {{ .namespace | default $.Values.project.namespace }}
+  labels:
+    {{- include "kargo-config.labels" $ | nindent 4 }}
+    kargo.akuity.io/stage: {{ .name }}
+spec:
+  {{- if .requestedFreight }}
+  # Defines what Freight (artifacts) this stage accepts for promotion
+  # Can specify: sources (Git repos), origin (specific stage), warehouse
+  requestedFreight:
+  {{- toYaml .requestedFreight | nindent 2 }}
+  {{- end }}
+  {{- if .promotionTemplate }}
+  # How Kargo executes promotions to this stage (new API)
+  promotionTemplate:
+    spec:
+      {{- if .promotionTemplate.steps }}
+      # Promotion steps - can reference PromotionTasks or use built-in tasks
+      steps:
+      {{- toYaml .promotionTemplate.steps | nindent 6 }}
+      {{- end }}
+      {{- if .promotionTemplate.vars }}
+      # Variables available to all steps
+      vars:
+      {{- toYaml .promotionTemplate.vars | nindent 6 }}
+      {{- end }}
+  {{- else if .promotionMechanisms }}
+  # DEPRECATED: Old promotionMechanisms API (keeping for backward compatibility)
+  # Use promotionTemplate instead for new Kargo versions
+  promotionMechanisms:
+  {{- if .promotionMechanisms.gitRepoUpdates }}
+    # Updates Git repository manifests (GitOps pattern)
+    # Typically updates image tags, Helm values, or kustomize overlays
+    gitRepoUpdates:
+    {{- toYaml .promotionMechanisms.gitRepoUpdates | nindent 4 }}
+  {{- end }}
+  {{- if .promotionMechanisms.argoCDAppUpdates }}
+    # Triggers ArgoCD application sync after Git updates
+    # Can specify sync options, prune, self-heal, etc.
+    argoCDAppUpdates:
+    {{- toYaml .promotionMechanisms.argoCDAppUpdates | nindent 4 }}
+  {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,54 @@
+# Default values for kargo-config subchart
+
+# Enable/disable the entire subchart
+enabled: false
+
+# Kargo project configuration
+project:
+  name: default
+  namespace: kargo
+
+# Stages configuration
+stages:
+  - name: dev
+    namespace: dev
+    promotionMechanisms:
+      gitRepoUpdates: []
+      argoCDAppUpdates:
+        - appName: ""
+          appNamespace: argocd
+  
+  - name: staging
+    namespace: staging
+    requestedFreight:
+      - origin:
+          kind: Warehouse
+          name: ""
+        sources:
+          stages:
+            - dev
+    promotionMechanisms:
+      gitRepoUpdates: []
+      argoCDAppUpdates:
+        - appName: ""
+          appNamespace: argocd
+  
+  - name: prod
+    namespace: prod
+    requestedFreight:
+      - origin:
+          kind: Warehouse
+          name: ""
+        sources:
+          stages:
+            - staging
+    promotionMechanisms:
+      gitRepoUpdates: []
+      argoCDAppUpdates:
+        - appName: ""
+          appNamespace: argocd
+
+# Warehouse configuration
+warehouse:
+  enabled: false
+  subscriptions: []

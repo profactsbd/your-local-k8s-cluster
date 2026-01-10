@@ -1,0 +1,40 @@
+{{- if and .Values.enabled .Values.authorizationPolicy.enabled }}
+#
+# ISTIO AUTHORIZATION POLICY
+# Purpose: Fine-grained access control for service-to-service communication
+# Renders: When both .Values.enabled and .Values.authorizationPolicy.enabled are true
+#
+# What it does:
+# - Controls WHO can access this service (based on service identity/principal)
+# - Controls WHAT operations are allowed (HTTP methods, paths, headers)
+# - Provides deny-by-default security (if no rules match, request is denied)
+# - Can ALLOW, DENY, or AUDIT requests for security monitoring
+#
+# Key concepts:
+# - action: ALLOW (permit matching requests), DENY (block), AUDIT (log only)
+# - rules: List of conditions (from, to, when) that must match
+# - from.source.principals: Service account identities (cluster.local/ns/<namespace>/sa/<name>)
+# - to.operation.methods/paths: HTTP operations allowed
+# - Default: No policy = all traffic allowed, empty policy = all traffic denied
+#
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ include "istio-routing.fullname" . }}
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+spec:
+  # Selector targets pods with these labels to apply authorization rules
+  selector:
+    matchLabels:
+      {{- include "istio-routing.selectorLabels" . | nindent 6 }}
+  # Action to take when rules match: ALLOW, DENY, or AUDIT
+  action: {{ .Values.authorizationPolicy.action }}
+  {{- if .Values.authorizationPolicy.rules }}
+  # Rules define conditions for authorization
+  # Each rule has: from (source), to (operation), when (conditions)
+  # If ANY rule matches, the action is taken
+  rules:
+    {{- toYaml .Values.authorizationPolicy.rules | nindent 4 }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,31 @@
+{{- if and .Values.enabled .Values.peerAuthentication.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "istio-routing.fullname" . }}-test-mtls
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  serviceAccountName: {{ include "istio-routing.fullname" . }}-test
+  containers:
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo "Testing PeerAuthentication..."
+      kubectl get peerauthentication {{ include "istio-routing.fullname" . }}
+      if [ $? -eq 0 ]; then
+        MODE=$(kubectl get peerauthentication {{ include "istio-routing.fullname" . }} -o jsonpath='{.spec.mtls.mode}')
+        echo "✓ PeerAuthentication exists with mode: $MODE"
+        exit 0
+      else
+        echo "✗ PeerAuthentication not found"
+        exit 1
+      fi
+  restartPolicy: Never
+{{- end }}

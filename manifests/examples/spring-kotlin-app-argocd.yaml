@@ -1,0 +1,35 @@
+# ArgoCD Application for Spring Kotlin App
+# This creates a "tracking only" application in ArgoCD UI
+# The app is deployed via Helm, but ArgoCD can monitor its health and status
+#
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: spring-kotlin-app
+  namespace: argocd
+  annotations:
+    # Indicate this is a Helm-managed app
+    argocd.argoproj.io/tracking-method: annotation
+spec:
+  # Project to which this application belongs
+  project: default
+  
+  # We'll create this as a resource tracking application
+  # It won't sync from Git, just monitors existing resources
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: spring-kotlin-app
+  
+  # Sync policy - fully manual, no automation
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false  # Namespace already exists
+  
+  # Since we can't point to a real Git source, we'll add resources to track manually
+  # This is done by ArgoCD detecting resources with matching labels
+  ignoreDifferences:
+    - group: "*"
+      kind: "*"
+      jsonPointers:
+        - /metadata/resourceVersion
+        - /metadata/generation

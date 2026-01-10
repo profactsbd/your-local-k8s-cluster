@@ -1,0 +1,419 @@
+{{- if .Values.enabled }}
+{{- if .Values.trafficRouting.enabled }}
+---
+#
+# ISTIO VIRTUAL SERVICE - CANARY/TRAFFIC SPLITTING MODE
+# Purpose: Routes traffic to multiple versions (stable/canary) for progressive delivery
+# Renders: When .Values.enabled=true and .Values.trafficRouting.enabled=true
+#
+# What it does:
+# - Distributes traffic between stable and canary versions using percentage weights
+# - Enables canary deployments, A/B testing, and blue-green deployments
+# - Integrates with Argo Rollouts for automated progressive delivery
+# - Matches requests by URI path and routes to appropriate backend subsets
+# - Supports advanced features: retry, timeout, CORS, fault injection, traffic mirroring
+#
+# Key concepts:
+# - hosts: External hostnames this VirtualService responds to
+# - gateways: Which Gateway resources handle incoming traffic
+# - match: Conditions to match requests (URI path, headers, etc.)
+# - route: Destinations with weights (stable: 90%, canary: 10%)
+# - subsets: Named versions defined in DestinationRule (stable, canary)
+#
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ include "istio-routing.fullname" . }}
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+spec:
+  # Hosts this VirtualService applies to (matches Gateway hosts)
+  hosts:
+  {{- range .Values.ingress.hosts }}
+  - {{ . | quote }}
+  {{- end }}
+  # Gateway that routes traffic to this VirtualService
+  gateways:
+  - {{ .Values.ingress.gateway }}
+  # HTTP routing rules
+  http:
+  - name: primary
+    # Match incoming requests by URI path
+    match:
+    - uri:
+        {{ .Values.ingress.pathType | lower }}: {{ .Values.ingress.path }}
+    {{- if .Values.faultInjection.enabled }}
+    # Fault injection for chaos testing (delays and HTTP errors)
+    # Used to test resilience and timeout handling
+    fault:
+      {{- if gt (.Values.faultInjection.delay.percentage | int) 0 }}
+      delay:
+        percentage:
+          value: {{ .Values.faultInjection.delay.percentage }}
+        fixedDelay: {{ .Values.faultInjection.delay.fixedDelay }}
+      {{- end }}
+      {{- if gt (.Values.faultInjection.abort.percentage | int) 0 }}
+      abort:
+        percentage:
+          value: {{ .Values.faultInjection.abort.percentage }}
+        httpStatus: {{ .Values.faultInjection.abort.httpStatus }}
+      {{- end }}
+    {{- end }}
+    {{- if .Values.retryPolicy.enabled }}
+    retries:
+      attempts: {{ .Values.retryPolicy.attempts }}
+      perTryTimeout: {{ .Values.retryPolicy.perTryTimeout }}
+      retryOn: {{ .Values.retryPolicy.retryOn }}
+    {{- end }}
+    {{- if .Values.timeout.enabled }}
+    timeout: {{ .Values.timeout.request }}
+    {{- end }}
+    {{- if .Values.cors.enabled }}
+    corsPolicy:
+      allowOrigins:
+        {{- toYaml .Values.cors.allowOrigins | nindent 8 }}
+      allowMethods:
+        {{- toYaml .Values.cors.allowMethods | nindent 8 }}
+      {{- if .Values.cors.allowHeaders }}
+      allowHeaders:
+        {{- toYaml .Values.cors.allowHeaders | nindent 8 }}
+      {{- end }}
+      {{- if .Values.cors.exposeHeaders }}
+      exposeHeaders:
+        {{- toYaml .Values.cors.exposeHeaders | nindent 8 }}
+      {{- end }}
+      {{- if .Values.cors.maxAge }}
+      maxAge: {{ .Values.cors.maxAge }}
+      {{- end }}
+      {{- if .Values.cors.allowCredentials }}
+      allowCredentials: {{ .Values.cors.allowCredentials }}
+      {{- end }}
+    {{- end }}
+    {{- if or .Values.headers.request.add .Values.headers.request.set .Values.headers.request.remove .Values.headers.response.add .Values.headers.response.set .Values.headers.response.remove }}
+    headers:
+      {{- if or .Values.headers.request.add .Values.headers.request.set .Values.headers.request.remove }}
+      # Request header manipulation (before forwarding to backend)
+      request:
+        {{- if .Values.headers.request.add }}
+        # Add headers if they don't exist
+        add:
+          {{- toYaml .Values.headers.request.add | nindent 10 }}
+        {{- end }}
+        {{- if .Values.headers.request.set }}
+        # Set/overwrite headers
+        set:
+          {{- toYaml .Values.headers.request.set | nindent 10 }}
+        {{- end }}
+        {{- if .Values.headers.request.remove }}
+        # Remove headers before forwarding
+        remove:
+          {{- toYaml .Values.headers.request.remove | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      {{- if or .Values.headers.response.add .Values.headers.response.set .Values.headers.response.remove }}
+      # Response header manipulation (before sending to client)
+      response:
+        {{- if .Values.headers.response.add }}
+        # Add response headers if they don't exist
+        add:
+          {{- toYaml .Values.headers.response.add | nindent 10 }}
+        {{- end }}
+        {{- if .Values.headers.response.set }}
+        # Set/overwrite response headers
+        set:
+          {{- toYaml .Values.headers.response.set | nindent 10 }}
+        {{- end }}
+        {{- if .Values.headers.response.remove }}
+        # Remove response headers before sending to client
+        remove:
+          {{- toYaml .Values.headers.response.remove | nindent 10 }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    # Traffic destinations with percentage weights for canary deployment
+    route:
+    - destination:
+        # Stable version (production traffic)
+        host: {{ include "istio-routing.fullname" . }}
+        port:
+          number: {{ .Values.service.port }}
+        subset: stable  # Refers to subset in DestinationRule
+      weight: {{ .Values.trafficRouting.stable.weight }}
+    - destination:
+        # Canary version (testing new code with real traffic)
+        host: {{ include "istio-routing.fullname" . }}
+        port:
+          number: {{ .Values.service.port }}
+        subset: canary  # Refers to subset in DestinationRule
+      weight: {{ .Values.trafficRouting.canary.weight }}
+    {{- if .Values.mirroring.enabled }}
+    # Traffic mirroring (shadow traffic) - sends copy of requests to another service
+    # Used for testing new versions without impacting production
+    mirror:
+      host: {{ .Values.mirroring.host }}
+      {{- if .Values.mirroring.subset }}
+      subset: {{ .Values.mirroring.subset }}
+      {{- end }}
+    {{- if lt (.Values.mirroring.percentage | int) 100 }}
+    # Percentage of requests to mirror (100 = all requests)
+    mirrorPercentage:
+      value: {{ .Values.mirroring.percentage }}
+    {{- end }}
+    {{- end }}
+---
+#
+# ISTIO DESTINATION RULE - CANARY MODE
+# Purpose: Defines subsets (versions) and traffic policies for the service
+# Renders: Automatically with VirtualService when trafficRouting.enabled=true
+#
+# What it does:
+# - Creates named subsets (stable, canary) for traffic splitting
+# - Applies circuit breaker patterns to prevent cascading failures
+# - Configures load balancing algorithms (round-robin, consistent hash, etc.)
+# - Sets connection limits and outlier detection
+# - Configures TLS for upstream connections
+#
+# Key concepts:
+# - subsets: Named versions with label selectors (stable/canary)
+# - trafficPolicy: Circuit breaker, load balancer, TLS configuration
+# - connectionPool: Connection limits (TCP/HTTP)
+# - outlierDetection: Remove unhealthy instances from load balancer pool
+#
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ include "istio-routing.fullname" . }}
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+spec:
+  # Service hostname this DestinationRule applies to
+  host: {{ include "istio-routing.fullname" . }}
+  {{- if or .Values.circuitBreaker.enabled .Values.tls.enabled .Values.timeout.enabled }}
+  # Global traffic policy applied to all subsets (unless overridden)
+  trafficPolicy:
+    {{- if .Values.loadBalancer }}
+    # Load balancing algorithm for distributing requests
+    # Load balancing algorithm for distributing requests
+    loadBalancer:
+      {{- if .Values.loadBalancer.simple }}
+      # Simple algorithms: ROUND_ROBIN, LEAST_CONN, RANDOM, PASSTHROUGH
+      simple: {{ .Values.loadBalancer.simple }}
+      {{- end }}
+      {{- if .Values.loadBalancer.consistentHash }}
+      # Consistent hashing for session affinity (sticky sessions)
+      consistentHash:
+        {{- toYaml .Values.loadBalancer.consistentHash | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- if .Values.circuitBreaker.enabled }}
+    # Connection pool limits to prevent resource exhaustion
+    connectionPool:
+      {{- if .Values.circuitBreaker.connectionPool.tcp }}
+      # TCP connection limits (maxConnections, connectTimeout, tcpKeepalive)
+      tcp:
+        {{- toYaml .Values.circuitBreaker.connectionPool.tcp | nindent 8 }}
+      {{- end }}
+      {{- if .Values.circuitBreaker.connectionPool.http }}
+      # HTTP connection limits (http1MaxPendingRequests, http2MaxRequests)
+      http:
+        {{- toYaml .Values.circuitBreaker.connectionPool.http | nindent 8 }}
+      {{- end }}
+    # Circuit breaker: Automatically eject unhealthy instances
+    # Prevents cascading failures by removing bad endpoints
+    outlierDetection:
+      # Number of consecutive errors before ejection
+      consecutiveErrors: {{ .Values.circuitBreaker.consecutiveErrors }}
+      # Time between ejection analysis sweeps
+      interval: {{ .Values.circuitBreaker.interval }}
+      # Minimum time instance stays ejected
+      baseEjectionTime: {{ .Values.circuitBreaker.baseEjectionTime }}
+      # Maximum percentage of instances that can be ejected
+      maxEjectionPercent: {{ .Values.circuitBreaker.maxEjectionPercent }}
+      # Minimum percentage of healthy instances required
+      minHealthPercent: {{ .Values.circuitBreaker.minHealthPercent }}
+    {{- end }}
+    {{- if .Values.tls.enabled }}
+    # TLS configuration for upstream connections (to backend service)
+    tls:
+      # DISABLE, SIMPLE, MUTUAL, ISTIO_MUTUAL
+      mode: {{ .Values.tls.mode }}
+      {{- if .Values.tls.clientCertificate }}
+      # Client certificate for mTLS
+      clientCertificate: {{ .Values.tls.clientCertificate }}
+      {{- end }}
+      {{- if .Values.tls.privateKey }}
+      # Private key for client certificate
+      privateKey: {{ .Values.tls.privateKey }}
+      {{- end }}
+      {{- if .Values.tls.caCertificates }}
+      # CA certificates to verify server certificate
+      caCertificates: {{ .Values.tls.caCertificates }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  # Subsets define named versions of the service for traffic splitting
+  # Each subset selects pods with specific labels (e.g., version=stable or version=canary)
+  subsets:
+  - name: stable
+    # Labels that identify stable version pods
+    labels:
+      {{- include "istio-routing.selectorLabels" . | nindent 6 }}
+  - name: canary
+    # Labels that identify canary version pods
+    labels:
+      {{- include "istio-routing.selectorLabels" . | nindent 6 }}
+{{- else if .Values.ingress.enabled }}
+---
+#
+# ISTIO VIRTUAL SERVICE - STANDARD MODE
+# Purpose: Routes all traffic to a single version (no canary/traffic splitting)
+# Renders: When .Values.enabled=true and .Values.ingress.enabled=true (and trafficRouting disabled)
+#
+# What it does:
+# - Routes all traffic to the service without traffic splitting
+# - Matches requests by URI path and forwards to backend
+# - Supports advanced features: retry, timeout, CORS, fault injection, traffic mirroring
+# - Used for simple deployments without progressive delivery
+#
+# Difference from canary mode:
+# - No subset routing (no stable/canary split)
+# - No DestinationRule subsets required
+# - Simpler configuration for standard deployments
+#
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{ include "istio-routing.fullname" . }}
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+spec:
+  # Hosts this VirtualService applies to
+  hosts:
+  {{- range .Values.ingress.hosts }}
+  - {{ . | quote }}
+  {{- end }}
+  # Gateway that routes traffic to this VirtualService
+  gateways:
+  - {{ .Values.ingress.gateway }}
+  # HTTP routing rules
+  http:
+  - match:
+    # Match incoming requests by URI path
+    - uri:
+        {{ .Values.ingress.pathType | lower }}: {{ .Values.ingress.path }}
+    {{- if .Values.faultInjection.enabled }}
+    # Fault injection for chaos testing (delays and HTTP errors)
+    # Used to test resilience and timeout handling
+    fault:
+      {{- if gt (.Values.faultInjection.delay.percentage | int) 0 }}
+      # Inject artificial delay into percentage of requests
+      delay:
+        percentage:
+          value: {{ .Values.faultInjection.delay.percentage }}
+        fixedDelay: {{ .Values.faultInjection.delay.fixedDelay }}
+      {{- end }}
+      {{- if gt (.Values.faultInjection.abort.percentage | int) 0 }}
+      # Abort requests with HTTP error code
+      abort:
+        percentage:
+          value: {{ .Values.faultInjection.abort.percentage }}
+        httpStatus: {{ .Values.faultInjection.abort.httpStatus }}
+      {{- end }}
+    {{- end }}
+    {{- if .Values.retryPolicy.enabled }}
+    # Automatic retry on failures (5xx errors, timeouts)
+    # Improves reliability by retrying transient failures
+    retries:
+      attempts: {{ .Values.retryPolicy.attempts }}
+      perTryTimeout: {{ .Values.retryPolicy.perTryTimeout }}
+      retryOn: {{ .Values.retryPolicy.retryOn }}
+    {{- end }}
+    {{- if .Values.timeout.enabled }}
+    # Request timeout - how long to wait before giving up
+    timeout: {{ .Values.timeout.request }}
+    {{- end }}
+    {{- if .Values.cors.enabled }}
+    # Cross-Origin Resource Sharing (CORS) policy for browser requests
+    # Controls which origins can access this service from web browsers
+    corsPolicy:
+      # Origins allowed to make cross-origin requests
+      allowOrigins:
+        {{- toYaml .Values.cors.allowOrigins | nindent 8 }}
+      # HTTP methods allowed (GET, POST, PUT, DELETE, etc.)
+      allowMethods:
+        {{- toYaml .Values.cors.allowMethods | nindent 8 }}
+      {{- if .Values.cors.allowHeaders }}
+      # Request headers allowed in CORS requests
+      allowHeaders:
+        {{- toYaml .Values.cors.allowHeaders | nindent 8 }}
+      {{- end }}
+      {{- if .Values.cors.exposeHeaders }}
+      # Response headers exposed to browser JavaScript
+      exposeHeaders:
+        {{- toYaml .Values.cors.exposeHeaders | nindent 8 }}
+      {{- end }}
+      {{- if .Values.cors.maxAge }}
+      # How long browser caches preflight response (seconds)
+      maxAge: {{ .Values.cors.maxAge }}
+      {{- end }}
+      {{- if .Values.cors.allowCredentials }}
+      # Allow cookies/credentials in CORS requests
+      allowCredentials: {{ .Values.cors.allowCredentials }}
+      {{- end }}
+    {{- end }}
+    {{- if or .Values.headers.request.add .Values.headers.request.set .Values.headers.request.remove .Values.headers.response.add .Values.headers.response.set .Values.headers.response.remove }}
+    # Header manipulation for requests and responses
+    # Used for: adding trace IDs, setting security headers, removing sensitive data
+    headers:
+      {{- if or .Values.headers.request.add .Values.headers.request.set .Values.headers.request.remove }}
+      request:
+        {{- if .Values.headers.request.add }}
+        add:
+          {{- toYaml .Values.headers.request.add | nindent 10 }}
+        {{- end }}
+        {{- if .Values.headers.request.set }}
+        set:
+          {{- toYaml .Values.headers.request.set | nindent 10 }}
+        {{- end }}
+        {{- if .Values.headers.request.remove }}
+        remove:
+          {{- toYaml .Values.headers.request.remove | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      {{- if or .Values.headers.response.add .Values.headers.response.set .Values.headers.response.remove }}
+      response:
+        {{- if .Values.headers.response.add }}
+        add:
+          {{- toYaml .Values.headers.response.add | nindent 10 }}
+        {{- end }}
+        {{- if .Values.headers.response.set }}
+        set:
+          {{- toYaml .Values.headers.response.set | nindent 10 }}
+        {{- end }}
+        {{- if .Values.headers.response.remove }}
+        remove:
+          {{- toYaml .Values.headers.response.remove | nindent 10 }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+    # Single destination route (no traffic splitting)
+    route:
+    - destination:
+        # Service hostname
+        host: {{ include "istio-routing.fullname" . }}
+        port:
+          number: {{ .Values.service.port }}
+    {{- if .Values.mirroring.enabled }}
+    # Traffic mirroring (shadow traffic) - same as canary mode
+    mirror:
+      host: {{ .Values.mirroring.host }}
+      {{- if .Values.mirroring.subset }}
+      subset: {{ .Values.mirroring.subset }}
+      {{- end }}
+    {{- if lt (.Values.mirroring.percentage | int) 100 }}
+    mirrorPercentage:
+      value: {{ .Values.mirroring.percentage }}
+    {{- end }}
+    {{- end }}
+{{- end }}
+{{- end }}

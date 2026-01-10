@@ -1,0 +1,41 @@
+{{- if .Values.enabled }}
+{{- if .Values.promotionTasks }}
+{{- range .Values.promotionTasks }}
+---
+#
+# KARGO PROMOTION TASK
+# Purpose: Defines reusable promotion steps for updating Git repos and syncing ArgoCD
+# Renders: One PromotionTask per entry in .Values.promotionTasks array
+#
+# What it does:
+# - Defines reusable promotion logic that stages can reference
+# - Encapsulates common tasks like Git commits, image updates, ArgoCD syncs
+# - Provides variables for customization per stage
+#
+# Task Types:
+# - git-commit: Updates manifests in Git repository
+# - argocd-sync: Triggers ArgoCD application synchronization
+# - git-pr: Creates pull request for manual review
+# - helm-update-image: Updates Helm values with new image tag
+#
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: {{ .name }}
+  namespace: {{ $.Values.project.namespace }}
+  labels:
+    {{- include "kargo-config.labels" $ | nindent 4 }}
+spec:
+  {{- if .vars }}
+  # Input variables that can be overridden when task is used
+  vars:
+  {{- toYaml .vars | nindent 2 }}
+  {{- end }}
+  {{- if .steps }}
+  # Promotion steps to execute
+  steps:
+  {{- toYaml .steps | nindent 2 }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

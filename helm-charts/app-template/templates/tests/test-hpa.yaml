@@ -1,0 +1,86 @@
+{{- if and (not (index .Values "argo-rollouts" "enabled")) .Values.autoscaling.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "app-template.fullname" . }}-test-hpa
+  labels:
+    {{- include "app-template.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  serviceAccountName: {{ include "app-template.fullname" . }}-hpa-test
+  containers:
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo "Testing HPA existence..."
+      kubectl get hpa {{ include "app-template.fullname" . }}
+      if [ $? -eq 0 ]; then
+        echo "✓ HPA exists"
+        
+        echo "Testing HPA configuration..."
+        MIN_REPLICAS=$(kubectl get hpa {{ include "app-template.fullname" . }} -o jsonpath='{.spec.minReplicas}')
+        MAX_REPLICAS=$(kubectl get hpa {{ include "app-template.fullname" . }} -o jsonpath='{.spec.maxReplicas}')
+        
+        echo "  Min Replicas: $MIN_REPLICAS"
+        echo "  Max Replicas: $MAX_REPLICAS"
+        
+        if [ "$MIN_REPLICAS" -gt 0 ] && [ "$MAX_REPLICAS" -ge "$MIN_REPLICAS" ]; then
+          echo "✓ HPA replica configuration is valid"
+          exit 0
+        else
+          echo "✗ HPA replica configuration is invalid"
+          kubectl describe hpa {{ include "app-template.fullname" . }}
+          exit 1
+        fi
+      else
+        echo "✗ HPA not found"
+        exit 1
+      fi
+  restartPolicy: Never
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "app-template.fullname" . }}-hpa-test
+  labels:
+    {{- include "app-template.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "app-template.fullname" . }}-hpa-test
+  labels:
+    {{- include "app-template.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+- apiGroups: ["autoscaling"]
+  resources: ["horizontalpodautoscalers"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "app-template.fullname" . }}-hpa-test
+  labels:
+    {{- include "app-template.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "app-template.fullname" . }}-hpa-test
+subjects:
+- kind: ServiceAccount
+  name: {{ include "app-template.fullname" . }}-hpa-test
+{{- end }}

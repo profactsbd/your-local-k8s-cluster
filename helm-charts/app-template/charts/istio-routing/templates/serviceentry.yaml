@@ -1,0 +1,60 @@
+{{- if and .Values.enabled .Values.serviceEntry.enabled }}
+{{- range .Values.serviceEntry.entries }}
+---
+#
+# ISTIO SERVICE ENTRY: {{ .name }}
+# Purpose: Makes external services (outside the mesh) accessible from within the mesh
+# Renders: One ServiceEntry per entry in .Values.serviceEntry.entries array
+#
+# What it does:
+# - Registers external services in Istio's internal service registry
+# - Enables traffic management features (retry, timeout, circuit breaker) for external calls
+# - Controls how mesh services resolve and reach external endpoints
+# - Can enforce mTLS for external service calls
+#
+# Key concepts:
+# - location: MESH_EXTERNAL (external service) or MESH_INTERNAL (mesh service not in registry)
+# - resolution: DNS (use DNS), STATIC (use specified endpoints), NONE (passthrough)
+# - endpoints: Specific IP addresses for STATIC resolution
+# - subjectAltNames: For mTLS validation of external service certificates
+#
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: {{ include "istio-routing.fullname" $ }}-{{ .name }}
+  labels:
+    {{- include "istio-routing.labels" $ | nindent 4 }}
+spec:
+  # Hosts that this ServiceEntry describes (e.g., api.external.com)
+  hosts:
+    {{- toYaml .hosts | nindent 4 }}
+  {{- if .ports }}
+  # Ports on which the external service listens
+  ports:
+    {{- toYaml .ports | nindent 4 }}
+  {{- end }}
+  {{- if .location }}
+  # MESH_EXTERNAL: service outside mesh | MESH_INTERNAL: mesh service not in registry
+  location: {{ .location }}
+  {{- end }}
+  {{- if .resolution }}
+  # DNS: resolve via DNS | STATIC: use endpoints below | NONE: passthrough to original destination
+  resolution: {{ .resolution }}
+  {{- end }}
+  {{- if .endpoints }}
+  # Explicit endpoints for STATIC resolution (IP addresses and ports)
+  endpoints:
+    {{- toYaml .endpoints | nindent 4 }}
+  {{- end }}
+  {{- if .exportTo }}
+  # Namespaces this ServiceEntry is visible to (. = current namespace, * = all)
+  exportTo:
+    {{- toYaml .exportTo | nindent 4 }}
+  {{- end }}
+  {{- if .subjectAltNames }}
+  # Subject Alternative Names for mTLS certificate validation
+  subjectAltNames:
+    {{- toYaml .subjectAltNames | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}

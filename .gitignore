@@ -1,0 +1,28 @@
+# Tools directory
+tools/
+*.zip
+*.tar.gz
+
+# Credentials
+credentials/
+*.pem
+*.key
+*-credentials.txt
+
+# Kubernetes configs
+kubeconfig*
+*.kubeconfig
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

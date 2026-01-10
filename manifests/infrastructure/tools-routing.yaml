@@ -1,0 +1,88 @@
+---
+# ArgoCD UI Access
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: argocd-ui
+  namespace: argocd
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - istio-system/main-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /argocd
+    route:
+    - destination:
+        host: argocd-server
+        port:
+          number: 443
+---
+# Kargo UI Access
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: kargo-ui
+  namespace: kargo
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - istio-system/main-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /kargo
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: kargo-api
+        port:
+          number: 80
+---
+# Kubernetes Dashboard Access
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: kubernetes-dashboard
+  namespace: kubernetes-dashboard
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - istio-system/main-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /dashboard
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: kubernetes-dashboard-kong-proxy
+        port:
+          number: 443
+---
+# Argo Rollouts Dashboard (if deployed as service)
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: argo-rollouts-dashboard
+  namespace: argo-rollouts
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - istio-system/main-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /rollouts
+    route:
+    - destination:
+        host: argo-rollouts-dashboard
+        port:
+          number: 3100

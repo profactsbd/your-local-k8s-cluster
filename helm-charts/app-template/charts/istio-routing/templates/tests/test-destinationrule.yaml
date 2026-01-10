@@ -1,0 +1,91 @@
+{{- if and .Values.enabled .Values.trafficRouting.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "istio-routing.fullname" . }}-test-destinationrule
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  serviceAccountName: {{ include "istio-routing.fullname" . }}-test-dr
+  containers:
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo "Testing DestinationRule existence..."
+      kubectl get destinationrule {{ include "istio-routing.fullname" . }}
+      if [ $? -eq 0 ]; then
+        echo "✓ DestinationRule exists"
+        
+        echo "Checking DestinationRule subsets..."
+        SUBSETS=$(kubectl get destinationrule {{ include "istio-routing.fullname" . }} -o jsonpath='{.spec.subsets[*].name}')
+        echo "Found subsets: $SUBSETS"
+        
+        if echo "$SUBSETS" | grep -q "stable"; then
+          echo "✓ 'stable' subset configured"
+        else
+          echo "✗ 'stable' subset missing"
+          exit 1
+        fi
+        
+        if echo "$SUBSETS" | grep -q "canary"; then
+          echo "✓ 'canary' subset configured"
+        else
+          echo "✗ 'canary' subset missing"
+          exit 1
+        fi
+        
+        echo "✓ DestinationRule configured correctly for canary deployment"
+        exit 0
+      else
+        echo "✗ DestinationRule not found"
+        exit 1
+      fi
+  restartPolicy: Never
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "istio-routing.fullname" . }}-test-dr
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "istio-routing.fullname" . }}-test-dr
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+- apiGroups: ["networking.istio.io"]
+  resources: ["destinationrules"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "istio-routing.fullname" . }}-test-dr
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "istio-routing.fullname" . }}-test-dr
+subjects:
+- kind: ServiceAccount
+  name: {{ include "istio-routing.fullname" . }}-test-dr
+{{- end }}

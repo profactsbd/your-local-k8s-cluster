@@ -1,0 +1,96 @@
+# Default values for argo-rollouts subchart
+
+# Enable/disable the entire subchart
+enabled: true
+
+# Number of replicas
+replicas: 2
+
+# Deployment strategy configuration
+strategy:
+  type: canary  # or "blueGreen"
+  
+  canary:
+    steps:
+      - setWeight: 20
+      - pause: {duration: 30s}
+      - setWeight: 40
+      - pause: {duration: 30s}
+      - setWeight: 60
+      - pause: {duration: 30s}
+      - setWeight: 80
+      - pause: {duration: 30s}
+  
+  blueGreen:
+    activeService: active
+    previewService: preview
+    autoPromotionEnabled: false
+    scaleDownDelaySeconds: 30
+
+# Image configuration (inherited from parent)
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+
+# Service Account name (inherited from parent)
+serviceAccountName: ""
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext: {}
+
+# Container security context
+securityContext: {}
+
+# Service configuration (inherited from parent)
+service:
+  targetPort: 80
+
+# Resource requests and limits
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Environment variables
+env: []
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+# Istio sidecar injection
+istio:
+  inject: true
+
+# Application name (will be overridden by parent)
+nameOverride: ""
+fullnameOverride: ""

@@ -1,0 +1,153 @@
+{{- if .Values.enabled }}
+#
+# ARGO ROLLOUTS - PROGRESSIVE DELIVERY
+# Purpose: Advanced deployment controller for canary, blue-green, and analysis-driven rollouts
+# Renders: When argo-rollouts.enabled=true
+#
+# What it does:
+# - Replaces standard Deployment with progressive delivery capabilities
+# - Automates canary deployments with gradual traffic shifting
+# - Integrates with Istio for traffic management (subset routing)
+# - Supports automated rollback based on metrics analysis
+# - Provides manual approval gates for production deployments
+#
+# Progressive Delivery Strategies:
+# - Canary: Gradually shift traffic from stable to new version (10% -> 25% -> 50% -> 100%)
+# - Blue-Green: Switch all traffic at once after validation
+# - Analysis: Run queries (Prometheus, Datadog) to validate new version
+#
+# Istio Integration:
+# - trafficRouting.istio: References VirtualService for traffic splitting
+# - Uses DestinationRule subsets (stable, canary) for version routing
+# - Argo Rollouts automatically updates VirtualService weights
+# - Enables zero-downtime deployments with real traffic validation
+#
+# Key concepts:
+# - strategy: Deployment strategy (canary, blueGreen)
+# - steps: Canary progression steps (setWeight, pause, analysis)
+# - revisionHistoryLimit: Number of old ReplicaSets to retain
+# - trafficRouting: Integration with service mesh or ingress
+#
+# Monitoring:
+# - kubectl argo rollouts get rollout <name>
+# - kubectl argo rollouts status <name>
+# - kubectl argo rollouts promote <name> (manual progression)
+# - kubectl argo rollouts abort <name> (rollback)
+#
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: {{ include "argo-rollouts.parentFullname" . }}
+  labels:
+    {{- include "argo-rollouts.labels" . | nindent 4 }}
+spec:
+  # Number of pod replicas (managed by Rollout controller)
+  replicas: {{ .Values.replicas }}
+  # Number of old ReplicaSets to retain for rollback
+  revisionHistoryLimit: 3
+  # Selector matches pods managed by this Rollout
+  # Selector matches pods managed by this Rollout
+  selector:
+    matchLabels:
+      {{- include "argo-rollouts.selectorLabels" . | nindent 6 }}
+  # Pod template specification (same as Deployment)
+  template:
+    metadata:
+      annotations:
+        {{- if .Values.istio.inject }}
+        # Enable Istio sidecar injection for traffic management
+        sidecar.istio.io/inject: "true"
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "argo-rollouts.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Values.serviceAccountName | default (include "argo-rollouts.parentFullname" .) }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Release.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - name: http
+          containerPort: {{ .Values.service.targetPort }}
+          protocol: TCP
+        {{- if .Values.livenessProbe }}
+        livenessProbe:
+          {{- toYaml .Values.livenessProbe | nindent 12 }}
+        {{- end }}
+        {{- if .Values.readinessProbe }}
+        readinessProbe:
+          {{- toYaml .Values.readinessProbe | nindent 12 }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+        {{- with .Values.env }}
+        env:
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  # Progressive delivery strategy configuration
+  strategy:
+    {{- if eq .Values.strategy.type "canary" }}
+    # CANARY STRATEGY: Gradually shift traffic from stable to new version
+    # Example: 10% -> 25% -> 50% -> 100% with pauses for validation
+    canary:
+      # Deployment steps - each step can setWeight, pause, or run analysis
+      # Example steps:
+      #   - setWeight: 10 (send 10% traffic to canary)
+      #   - pause: {duration: 5m} (wait 5 minutes)
+      #   - setWeight: 50
+      #   - pause: {} (manual approval required)
+      #   - setWeight: 100 (full rollout)
+      steps:
+        {{- toYaml .Values.strategy.canary.steps | nindent 8 }}
+      {{- if (index .Values "istio-routing.trafficRouting.enabled" | default false) }}
+      # Istio traffic routing integration
+      # Argo Rollouts automatically updates VirtualService weights during rollout
+      # Requires: VirtualService with stable/canary subsets in DestinationRule
+      trafficRouting:
+        istio:
+          virtualService:
+            # VirtualService name to modify
+            name: {{ include "argo-rollouts.parentFullname" . }}
+            # Subset names in DestinationRule
+            canarySubsetName: canary
+            stableSubsetName: stable
+      {{- end }}
+    {{- else if eq .Values.strategy.type "blueGreen" }}
+    # BLUE-GREEN STRATEGY: Switch all traffic at once after validation
+    # Maintains two complete environments (blue=active, green=preview)
+    blueGreen:
+      # Active service - receives production traffic
+      activeService: {{ include "argo-rollouts.parentFullname" . }}
+      # Preview service - new version for testing before switch
+      previewService: {{ include "argo-rollouts.parentFullname" . }}-preview
+      # Auto-promotion: true = automatic switch, false = manual approval required
+      autoPromotionEnabled: {{ .Values.strategy.blueGreen.autoPromotionEnabled }}
+      {{- if .Values.strategy.blueGreen.scaleDownDelaySeconds }}
+      # Time to wait before scaling down old version (allows connection draining)
+      scaleDownDelaySeconds: {{ .Values.strategy.blueGreen.scaleDownDelaySeconds }}
+      {{- end }}
+    {{- end }}
+{{- end }}

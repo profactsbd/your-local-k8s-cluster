@@ -1,0 +1,22 @@
+{{- if .Values.enabled }}
+---
+#
+# KARGO PROJECT
+# Purpose: Defines a Kargo project grouping related stages and promotion pipelines
+# Renders: When .Values.enabled is true
+#
+# What it does:
+# - Creates a project namespace for Kargo resources
+# - Groups related stages (dev, staging, prod) into a logical unit
+# - Provides RBAC boundaries for promotions
+# - Required before creating stages in the project namespace
+#
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Project
+metadata:
+  name: {{ .Values.project.name }}
+  {{- if .Values.project.annotations }}
+  annotations:
+    {{- toYaml .Values.project.annotations | nindent 4 }}
+  {{- end }}
+{{- end }}

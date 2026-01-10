@@ -1,0 +1,191 @@
+# Default values for istio-routing subchart
+# These values can be overridden from parent chart
+
+# Enable/disable the entire subchart
+enabled: true
+
+# Ingress configuration
+ingress:
+  enabled: true
+  path: /myapp
+  pathType: Prefix
+  gateway: istio-system/main-gateway
+  hosts:
+    - "*"
+
+# Traffic routing for canary deployments
+trafficRouting:
+  enabled: false  # Set to true when using Argo Rollouts canary strategy
+  stable:
+    weight: 100
+  canary:
+    weight: 0
+
+# Service configuration (should match parent chart)
+service:
+  port: 80
+
+# Gateway configuration - creates Istio Gateway for ingress
+gateway:
+  enabled: false
+  name: ""  # If empty, uses fullname
+  servers:
+    - port:
+        number: 80
+        name: http
+        protocol: HTTP
+      hosts:
+        - "*"
+    # - port:
+    #     number: 443
+    #     name: https
+    #     protocol: HTTPS
+    #   tls:
+    #     mode: SIMPLE
+    #     credentialName: myapp-tls-cert
+    #   hosts:
+    #     - "myapp.example.com"
+
+# ServiceEntry - for accessing external services
+serviceEntry:
+  enabled: false
+  entries: []
+    # - name: external-api
+    #   hosts:
+    #     - api.external.com
+    #   ports:
+    #     - number: 443
+    #       name: https
+    #       protocol: HTTPS
+    #   location: MESH_EXTERNAL
+    #   resolution: DNS
+
+# PeerAuthentication - mTLS configuration
+peerAuthentication:
+  enabled: false
+  mode: STRICT  # STRICT, PERMISSIVE, DISABLE
+  portLevelMtls: {}
+    # 8080:
+    #   mode: DISABLE
+
+# AuthorizationPolicy - access control
+authorizationPolicy:
+  enabled: false
+  action: ALLOW  # ALLOW, DENY, AUDIT, CUSTOM
+  rules: []
+    # - from:
+    #   - source:
+    #       principals:
+    #         - "cluster.local/ns/default/sa/frontend"
+    #   to:
+    #   - operation:
+    #       methods: ["GET"]
+    #       paths: ["/api/*"]
+
+# Sidecar - optimize sidecar configuration
+sidecar:
+  enabled: false
+  egress:
+    - hosts:
+        - "./*"  # Allow all services in same namespace
+        # - "istio-system/*"  # Allow istio-system services
+  outboundTrafficPolicy:
+    mode: ALLOW_ANY  # ALLOW_ANY, REGISTRY_ONLY
+
+# Retry policy
+retryPolicy:
+  enabled: false
+  attempts: 3
+  perTryTimeout: 2s
+  retryOn: "5xx,reset,connect-failure,refused-stream"
+
+# Timeout configuration
+timeout:
+  enabled: false
+  request: 30s
+  idle: 3600s  # Connection idle timeout
+
+# Circuit breaker settings (DestinationRule trafficPolicy)
+circuitBreaker:
+  enabled: false
+  consecutiveErrors: 5
+  interval: 30s
+  baseEjectionTime: 30s
+  maxEjectionPercent: 50
+  minHealthPercent: 0
+  # Connection pool settings
+  connectionPool:
+    tcp:
+      maxConnections: 100
+      connectTimeout: 30s
+    http:
+      http1MaxPendingRequests: 1024
+      http2MaxRequests: 1024
+      maxRequestsPerConnection: 0
+      maxRetries: 3
+
+# Load balancer settings
+loadBalancer:
+  simple: ROUND_ROBIN  # ROUND_ROBIN, LEAST_REQUEST, RANDOM, PASSTHROUGH
+  # consistentHash:
+  #   httpHeaderName: "x-user-id"
+  #   minimumRingSize: 1024
+
+# TLS settings for egress traffic
+tls:
+  enabled: false
+  mode: SIMPLE  # SIMPLE, MUTUAL, ISTIO_MUTUAL
+  # clientCertificate: /etc/certs/cert.pem
+  # privateKey: /etc/certs/key.pem
+  # caCertificates: /etc/certs/ca.pem
+
+# Traffic mirroring (shadow traffic)
+mirroring:
+  enabled: false
+  host: ""  # Target service for mirrored traffic
+  subset: ""  # Optional subset
+  percentage: 100  # Percentage of traffic to mirror
+
+# Fault injection for testing
+faultInjection:
+  enabled: false
+  delay:
+    percentage: 0
+    fixedDelay: 5s
+  abort:
+    percentage: 0
+    httpStatus: 500
+
+# CORS policy
+cors:
+  enabled: false
+  allowOrigins:
+    - exact: "https://example.com"
+  allowMethods:
+    - GET
+    - POST
+    - PUT
+    - DELETE
+  allowHeaders:
+    - "content-type"
+    - "authorization"
+  exposeHeaders:
+    - "x-custom-header"
+  maxAge: 24h
+  allowCredentials: true
+
+# Request/Response headers manipulation
+headers:
+  request:
+    add: {}
+      # x-custom-header: "value"
+    set: {}
+    remove: []
+  response:
+    add: {}
+    set: {}
+    remove: []
+
+# Application name (will be overridden by parent)
+nameOverride: ""
+fullnameOverride: ""

@@ -1,0 +1,29 @@
+apiVersion: v2
+name: app-template
+description: A modular Helm chart for deploying applications with ArgoCD, Argo Rollouts, and Kargo support
+type: application
+version: 2.0.0
+appVersion: "1.0.0"
+keywords:
+  - kubernetes
+  - deployment
+  - argocd
+  - argo-rollouts
+  - kargo
+  - istio
+maintainers:
+  - name: Local Cluster Admin
+
+dependencies:
+  - name: argo-rollouts
+    version: 1.0.0
+    repository: "file://./charts/argo-rollouts"
+    condition: argo-rollouts.enabled
+  - name: istio-routing
+    version: 1.0.0
+    repository: "file://./charts/istio-routing"
+    condition: istio-routing.enabled
+  - name: kargo-config
+    version: 1.0.0
+    repository: "file://./charts/kargo-config"
+    condition: kargo-config.enabled

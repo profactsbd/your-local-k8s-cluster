@@ -1,0 +1,61 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sample-app-dev
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  
+  source:
+    # Path to your Helm chart (local or Git repository)
+    repoURL: https://github.com/your-org/your-repo.git
+    targetRevision: HEAD
+    path: helm-charts/app-template
+    helm:
+      releaseName: sample-app
+      values: |
+        image:
+          repository: nginx
+          tag: "1.25-alpine"
+        
+        ingress:
+          enabled: true
+          path: /sample-app
+        
+        rollout:
+          enabled: true
+          replicas: 3
+          strategy:
+            type: canary
+            canary:
+              steps:
+                - setWeight: 25
+                - pause: {duration: 1m}
+                - setWeight: 50
+                - pause: {duration: 1m}
+                - setWeight: 75
+                - pause: {duration: 1m}
+              trafficRouting:
+                istio:
+                  enabled: true
+        
+        resources:
+          limits:
+            cpu: 200m
+            memory: 256Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+  
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

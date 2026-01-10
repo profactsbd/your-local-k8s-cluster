@@ -1,0 +1,48 @@
+#
+# KUBERNETES SERVICE
+# Purpose: Exposes pods via stable network endpoint with load balancing
+# Renders: Always (required for pod networking)
+#
+# What it does:
+# - Provides stable DNS name for pod discovery (service-name.namespace.svc.cluster.local)
+# - Load balances traffic across healthy pod replicas
+# - Enables service-to-service communication within the cluster
+# - Works with Istio for service mesh features (traffic management, mTLS)
+#
+# Service Types:
+# - ClusterIP (default): Internal cluster access only
+# - NodePort: Exposes on each node's IP at a static port
+# - LoadBalancer: Provisions cloud load balancer (AWS ELB, GCP LB, etc.)
+# - ExternalName: Maps to external DNS name (CNAME)
+#
+# Key concepts:
+# - port: Port exposed by the Service (what clients connect to)
+# - targetPort: Port on the container (where traffic is forwarded)
+# - selector: Matches pods to include in load balancer pool
+# - name: Port name used by Istio for protocol detection (http, grpc, tcp, etc.)
+#
+# Istio Integration:
+# - Port name 'http' enables HTTP traffic management features
+# - Service becomes part of Istio service registry automatically
+# - VirtualServices and DestinationRules reference this Service
+#
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "app-template.fullname" . }}
+  labels:
+    {{- include "app-template.labels" . | nindent 4 }}
+spec:
+  # Service type - ClusterIP (internal), NodePort, or LoadBalancer
+  type: {{ .Values.service.type }}
+  ports:
+    # Port exposed by the Service
+    - port: {{ .Values.service.port }}
+      # Port on the container (references containerPort name)
+      targetPort: http
+      protocol: TCP
+      # Port name - 'http' enables Istio HTTP features
+      name: http
+  # Selector matches pods with these labels
+  selector:
+    {{- include "app-template.selectorLabels" . | nindent 4 }}

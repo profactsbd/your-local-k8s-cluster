@@ -1,0 +1,109 @@
+---
+# Kargo Project
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Project
+metadata:
+  name: sample-app
+spec:
+  promotionPolicies:
+  - stage: dev
+    autoPromotionEnabled: true
+  - stage: staging
+    autoPromotionEnabled: false
+  - stage: prod
+    autoPromotionEnabled: false
+---
+# Warehouse - Source of application artifacts
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: sample-app
+  namespace: sample-app
+spec:
+  subscriptions:
+  - image:
+      repoURL: nginx
+      semverConstraint: ^1.25.0
+      discoveryLimit: 5
+  - git:
+      repoURL: https://github.com/your-org/your-repo.git
+      commitSelectionStrategy: NewestFromBranch
+      includePaths:
+      - helm-charts/app-template/**
+---
+# Development Stage
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: dev
+  namespace: sample-app
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: sample-app
+    sources:
+      direct: true
+  promotionMechanisms:
+    gitRepoUpdates:
+    - repoURL: https://github.com/your-org/your-repo.git
+      writeBranch: main
+      kustomize:
+        images:
+        - image: nginx
+          path: environments/dev
+    argoCDAppUpdates:
+    - appName: sample-app-dev
+      appNamespace: argocd
+---
+# Staging Stage
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: staging
+  namespace: sample-app
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: sample-app
+    sources:
+      stages:
+      - dev
+  promotionMechanisms:
+    gitRepoUpdates:
+    - repoURL: https://github.com/your-org/your-repo.git
+      writeBranch: main
+      kustomize:
+        images:
+        - image: nginx
+          path: environments/staging
+    argoCDAppUpdates:
+    - appName: sample-app-staging
+      appNamespace: argocd
+---
+# Production Stage
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: prod
+  namespace: sample-app
+spec:
+  requestedFreight:
+  - origin:
+      kind: Warehouse
+      name: sample-app
+    sources:
+      stages:
+      - staging
+  promotionMechanisms:
+    gitRepoUpdates:
+    - repoURL: https://github.com/your-org/your-repo.git
+      writeBranch: main
+      kustomize:
+        images:
+        - image: nginx
+          path: environments/prod
+    argoCDAppUpdates:
+    - appName: sample-app-prod
+      appNamespace: argocd

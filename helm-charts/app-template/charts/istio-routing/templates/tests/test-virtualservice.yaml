@@ -1,0 +1,83 @@
+{{- if and .Values.enabled .Values.ingress.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "istio-routing.fullname" . }}-test-virtualservice
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  serviceAccountName: {{ include "istio-routing.fullname" . }}-test
+  containers:
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo "Testing VirtualService existence..."
+      kubectl get virtualservice {{ include "istio-routing.fullname" . }}
+      if [ $? -eq 0 ]; then
+        echo "✓ VirtualService exists"
+        
+        echo "Checking VirtualService configuration..."
+        PATH_MATCH=$(kubectl get virtualservice {{ include "istio-routing.fullname" . }} -o jsonpath='{.spec.http[0].match[0].uri.prefix}')
+        if [ "$PATH_MATCH" = "{{ .Values.ingress.path }}" ]; then
+          echo "✓ VirtualService path configured correctly: $PATH_MATCH"
+        else
+          echo "⚠ VirtualService path mismatch. Expected: {{ .Values.ingress.path }}, Got: $PATH_MATCH"
+        fi
+        
+        GATEWAY=$(kubectl get virtualservice {{ include "istio-routing.fullname" . }} -o jsonpath='{.spec.gateways[0]}')
+        echo "✓ VirtualService gateway: $GATEWAY"
+        
+        exit 0
+      else
+        echo "✗ VirtualService not found"
+        exit 1
+      fi
+  restartPolicy: Never
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "istio-routing.fullname" . }}-test
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "istio-routing.fullname" . }}-test
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+- apiGroups: ["networking.istio.io"]
+  resources: ["virtualservices", "destinationrules"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "istio-routing.fullname" . }}-test
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "istio-routing.fullname" . }}-test
+subjects:
+- kind: ServiceAccount
+  name: {{ include "istio-routing.fullname" . }}-test
+{{- end }}

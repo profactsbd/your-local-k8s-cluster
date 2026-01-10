@@ -1,0 +1,372 @@
+# Deployment Configuration for Spring Kotlin Application
+# Image: nijogeorgep/spring-kotlin-app:2c5c983
+#
+# This configuration enables:
+# - Argo Rollouts for progressive delivery (canary deployments)
+# - Istio service mesh for traffic management
+# - Kargo for multi-environment promotion pipeline
+#
+# Deploy with: helm install spring-kotlin-app . -f values-spring-kotlin-app.yaml
+
+# === ARGO ROLLOUTS CONFIGURATION ===
+# Progressive delivery with canary strategy
+argo-rollouts:
+  enabled: true  # Use Argo Rollouts instead of standard Deployment
+  
+  # Reference parent chart's ServiceAccount
+  serviceAccountName: spring-kotlin-app-app-template
+  
+  # Application image
+  image:
+    repository: nijogeorgep/spring-kotlin-app
+    tag: "2c5c983"
+    pullPolicy: IfNotPresent
+  
+  # Number of replicas
+  replicas: 3
+  
+  # Service configuration for Argo Rollouts
+  service:
+    targetPort: 8080  # Spring Boot application port
+  
+  # Istio sidecar injection
+  istio:
+    inject: true
+  
+  # Health checks for Spring Boot application
+  livenessProbe:
+    httpGet:
+      path: /actuator/health/liveness
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  readinessProbe:
+    httpGet:
+      path: /actuator/health/readiness
+      port: http
+    initialDelaySeconds: 20
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  # Resource requests and limits
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  
+  # Environment variables for Spring Boot
+  env:
+    - name: SPRING_PROFILES_ACTIVE
+      value: "kubernetes"
+    - name: JAVA_OPTS
+      value: "-Xmx768m -Xms512m"
+  
+  # Progressive delivery strategy
+  strategy:
+    type: canary  # Use canary deployment strategy
+    canary:
+      steps:
+        # Step 1: Deploy canary with 10% traffic
+        - setWeight: 10
+        - pause:
+            duration: 2m  # Observe for 2 minutes
+        
+        # Step 2: Increase to 25% traffic
+        - setWeight: 25
+        - pause:
+            duration: 3m  # Observe for 3 minutes
+        
+        # Step 3: Increase to 50% traffic
+        - setWeight: 50
+        - pause:
+            duration: 5m  # Observe for 5 minutes
+        
+        # Step 4: Increase to 75% traffic
+        - setWeight: 75
+        - pause:
+            duration: 5m  # Observe for 5 minutes
+        
+        # Step 5: Full rollout (100%)
+        - setWeight: 100
+
+# === SERVICE CONFIGURATION ===
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080  # Spring Boot default port
+
+# === ISTIO ROUTING CONFIGURATION ===
+istio-routing:
+  enabled: true
+  
+  # Traffic routing for canary deployments
+  trafficRouting:
+    enabled: true
+    stable:
+      weight: 90  # Initial stable version weight
+    canary:
+      weight: 10  # Initial canary version weight
+  
+  # Ingress configuration
+  ingress:
+    enabled: true
+    hosts:
+      - spring-kotlin-app.local
+    path: /
+    pathType: Prefix
+    gateway: istio-system/istio-ingressgateway  # Use Istio default gateway
+  
+  # Service configuration
+  service:
+    port: 80
+  
+  # Circuit breaker for resilience
+  circuitBreaker:
+    enabled: true
+    consecutiveErrors: 5
+    interval: 30s
+    baseEjectionTime: 30s
+    maxEjectionPercent: 50
+    minHealthPercent: 50
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 2
+  
+  # Retry policy for transient failures
+  retryPolicy:
+    enabled: true
+    attempts: 3
+    perTryTimeout: 5s
+    retryOn: "5xx,reset,connect-failure,refused-stream"
+  
+  # Request timeout
+  timeout:
+    enabled: true
+    request: 30s
+  
+  # CORS for browser access
+  cors:
+    enabled: true
+    allowOrigins:
+      - exact: "http://localhost:3000"
+      - exact: "http://localhost:8080"
+    allowMethods:
+      - GET
+      - POST
+      - PUT
+      - DELETE
+      - OPTIONS
+    allowHeaders:
+      - "Content-Type"
+      - "Authorization"
+    maxAge: "24h"
+    allowCredentials: true
+  
+  # mTLS configuration
+  peerAuthentication:
+    enabled: true
+    mode: STRICT  # Enforce mTLS for all service-to-service communication
+
+# === KARGO CONFIGURATION ===
+# Multi-environment promotion pipeline with new PromotionTask API
+kargo-config:
+  enabled: true  # Re-enabled with new API
+  
+  project:
+    name: spring-kotlin-app-project  # Renamed to avoid conflict with app namespace
+    namespace: spring-kotlin-app-project  # Project creates namespace with same name
+  
+  # Warehouse: Source of container images
+  warehouse:
+    name: spring-kotlin-app-warehouse
+    subscriptions:
+      - image:
+          repoURL: nijogeorgep/spring-kotlin-app
+          semverConstraint: "*"
+  
+  # Note: PromotionTasks are not needed when using built-in steps like git-clone, kustomize-set-image, etc.
+  # Custom PromotionTasks are only needed for complex custom logic
+  
+  stages:
+    # Development environment - auto-promote from Warehouse
+    - name: dev
+      namespace: spring-kotlin-app-project  # All Kargo resources in project namespace
+      requestedFreight:
+        - origin:
+            kind: Warehouse
+            name: spring-kotlin-app-warehouse
+          sources:
+            direct: true
+      promotionTemplate:
+        steps:
+          # Use built-in git-commit task (simplified approach)
+          - uses: git-clone
+            config:
+              repoURL: https://github.com/your-org/spring-kotlin-app-manifests.git
+              checkout:
+                - branch: main
+                  path: ./manifests
+          - uses: kustomize-set-image
+            config:
+              path: ./manifests/overlays/dev
+              images:
+                - image: nijogeorgep/spring-kotlin-app
+          - uses: git-commit
+            config:
+              path: ./manifests
+              messageFromSteps:
+                - kustomize-set-image
+          - uses: git-push
+            config:
+              path: ./manifests
+              branch: main
+          - uses: argocd-update
+            config:
+              apps:
+                - name: spring-kotlin-app-dev
+                  namespace: argocd
+    
+    # Staging environment - manual promotion from dev
+    - name: staging
+      namespace: spring-kotlin-app-project
+      requestedFreight:
+        - origin:
+            kind: Warehouse
+            name: spring-kotlin-app-warehouse
+          sources:
+            stages:
+              - dev
+      promotionTemplate:
+        steps:
+          - uses: git-clone
+            config:
+              repoURL: https://github.com/your-org/spring-kotlin-app-manifests.git
+              checkout:
+                - branch: main
+                  path: ./manifests
+          - uses: kustomize-set-image
+            config:
+              path: ./manifests/overlays/staging
+              images:
+                - image: nijogeorgep/spring-kotlin-app
+          - uses: git-commit
+            config:
+              path: ./manifests
+              messageFromSteps:
+                - kustomize-set-image
+          - uses: git-push
+            config:
+              path: ./manifests
+              branch: main
+          - uses: argocd-update
+            config:
+              apps:
+                - name: spring-kotlin-app-staging
+                  namespace: argocd
+    
+    # Production environment - manual promotion from staging
+    - name: prod
+      namespace: spring-kotlin-app-project
+      requestedFreight:
+        - origin:
+            kind: Warehouse
+            name: spring-kotlin-app-warehouse
+          sources:
+            stages:
+              - staging
+      promotionTemplate:
+        steps:
+          - uses: git-clone
+            config:
+              repoURL: https://github.com/your-org/spring-kotlin-app-manifests.git
+              checkout:
+                - branch: main
+                  path: ./manifests
+          - uses: kustomize-set-image
+            config:
+              path: ./manifests/overlays/prod
+              images:
+                - image: nijogeorgep/spring-kotlin-app
+          - uses: git-commit
+            config:
+              path: ./manifests
+              messageFromSteps:
+                - kustomize-set-image
+          - uses: git-push
+            config:
+              path: ./manifests
+              branch: main
+          - uses: argocd-update
+            config:
+              apps:
+                - name: spring-kotlin-app-prod
+                  namespace: argocd
+
+# === SERVICE ACCOUNT ===
+serviceAccount:
+  create: true
+  annotations: {}
+  # For cloud IAM integration, add annotations here:
+  # annotations:
+  #   eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/spring-kotlin-app
+  #   iam.gke.io/gcp-service-account: spring-kotlin-app@project.iam.gserviceaccount.com
+
+# === POD SECURITY CONTEXT ===
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+# === CONTAINER SECURITY CONTEXT ===
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# === POD ANNOTATIONS ===
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/actuator/prometheus"
+
+# === SCHEDULING ===
+nodeSelector: {}
+
+affinity: {}
+  # Example: Pod anti-affinity for high availability
+  # podAntiAffinity:
+  #   preferredDuringSchedulingIgnoredDuringExecution:
+  #     - weight: 100
+  #       podAffinityTerm:
+  #         labelSelector:
+  #           matchExpressions:
+  #             - key: app.kubernetes.io/name
+  #               operator: In
+  #               values:
+  #                 - spring-kotlin-app
+  #         topologyKey: kubernetes.io/hostname
+
+tolerations: []
+
+# === AUTOSCALING (DISABLED - Using Argo Rollouts replicas) ===
+autoscaling:
+  enabled: false
+  # Note: HPA is not compatible with Argo Rollouts in this configuration
+  # Use Argo Rollouts replica management instead

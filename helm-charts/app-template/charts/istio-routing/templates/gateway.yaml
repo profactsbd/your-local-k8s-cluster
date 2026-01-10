@@ -1,0 +1,32 @@
+{{- if and .Values.enabled .Values.gateway.enabled }}
+#
+# ISTIO GATEWAY
+# Purpose: Configures how external traffic enters the service mesh at the edge
+# Renders: When both .Values.enabled and .Values.gateway.enabled are true
+# 
+# What it does:
+# - Defines ingress points for external traffic (HTTP/HTTPS/TCP)
+# - Configures TLS settings for HTTPS termination
+# - Specifies which Gateway Controller handles this configuration
+# - Works with VirtualServices to route traffic to internal services
+#
+# Key concepts:
+# - selector: Targets the Istio ingress gateway pods (istio=ingressgateway)
+# - servers: List of ports, protocols, and hosts this gateway accepts
+# - Each server can have TLS configuration for HTTPS
+#
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: {{ .Values.gateway.name | default (include "istio-routing.fullname" .) }}
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+spec:
+  # Selector targets the Istio ingress gateway pods in istio-system namespace
+  selector:
+    istio: ingressgateway  # use Istio default gateway implementation
+  # Servers define the port, protocol, and hosts configuration
+  # Example: port 80 (HTTP), port 443 (HTTPS with TLS)
+  servers:
+    {{- toYaml .Values.gateway.servers | nindent 4 }}
+{{- end }}

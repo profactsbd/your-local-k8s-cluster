@@ -1,0 +1,12 @@
+apiVersion: v2
+name: argo-rollouts
+description: Argo Rollouts deployment configuration for progressive delivery (canary/blue-green)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - argo-rollouts
+  - progressive-delivery
+  - canary
+  - blue-green
+  - deployment

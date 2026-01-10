@@ -1,0 +1,302 @@
+# ============================================
+# Example 1: Simple Web Application
+# ============================================
+# Use case: Basic nginx deployment with Istio routing
+# Deploy: helm install web-app ./helm-charts/app-template -f examples-values.yaml
+# ============================================
+
+nameOverride: "web-app"
+fullnameOverride: ""
+
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "alpine"
+
+rollout:
+  enabled: false  # Use standard Deployment for simple apps
+  
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 80
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+# Istio routing enabled, no canary
+istio-routing:
+  enabled: true
+  ingress:
+    enabled: true
+    path: /web
+    pathType: Prefix
+  trafficRouting:
+    enabled: false
+
+# Kargo disabled
+kargo-config:
+  enabled: false
+
+---
+# ============================================
+# Example 2: Canary Deployment with Istio
+# ============================================
+# Use case: Gradual rollout with traffic splitting
+# Deploy: helm install api-service ./helm-charts/app-template -f examples-values.yaml --set-file values=example2
+# ============================================
+
+nameOverride: "api-service"
+
+image:
+  repository: myregistry/api-service
+  tag: "v2.0.0"
+
+rollout:
+  enabled: true
+  replicas: 3
+  strategy:
+    type: canary
+    canary:
+      steps:
+        - setWeight: 10
+        - pause: {duration: 2m}
+        - setWeight: 25
+        - pause: {duration: 2m}
+        - setWeight: 50
+        - pause: {duration: 5m}
+        - setWeight: 75
+        - pause: {duration: 2m}
+
+service:
+  port: 8080
+  targetPort: 8080
+
+env:
+  - name: ENV
+    value: "production"
+  - name: LOG_LEVEL
+    value: "info"
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 200m
+    memory: 256Mi
+
+# Istio with canary traffic splitting
+istio-routing:
+  enabled: true
+  ingress:
+    enabled: true
+    path: /api/v2
+    pathType: Prefix
+    gateway: istio-system/main-gateway
+  trafficRouting:
+    enabled: true  # Enable canary subsets
+    stable:
+      weight: 100
+    canary:
+      weight: 0
+
+kargo-config:
+  enabled: false
+
+---
+# ============================================
+# Example 3: Full GitOps with Kargo
+# ============================================
+# Use case: Multi-stage deployment (dev → staging → prod)
+# Deploy: Create separate namespaces first, then install per stage
+# ============================================
+
+nameOverride: "myapp"
+
+image:
+  repository: myregistry/myapp
+  tag: "v1.0.0"
+
+rollout:
+  enabled: true
+  replicas: 2
+  strategy:
+    type: canary
+
+service:
+  port: 80
+  targetPort: 8080
+
+istio-routing:
+  enabled: true
+  ingress:
+    enabled: true
+    path: /myapp
+    pathType: Prefix
+  trafficRouting:
+    enabled: true
+
+# Kargo multi-stage configuration
+kargo-config:
+  enabled: true
+  project:
+    name: myapp-project
+    namespace: kargo
+  stages:
+    - name: dev
+      namespace: dev
+      promotionMechanisms:
+        argoCDAppUpdates:
+          - appName: myapp-dev
+            appNamespace: argocd
+    
+    - name: staging
+      namespace: staging
+      requestedFreight:
+        - origin:
+            kind: Warehouse
+            name: myapp-warehouse
+          sources:
+            stages:
+              - dev
+      promotionMechanisms:
+        argoCDAppUpdates:
+          - appName: myapp-staging
+            appNamespace: argocd
+    
+    - name: prod
+      namespace: prod
+      requestedFreight:
+        - origin:
+            kind: Warehouse
+            name: myapp-warehouse
+          sources:
+            stages:
+              - staging
+      promotionMechanisms:
+        argoCDAppUpdates:
+          - appName: myapp-prod
+            appNamespace: argocd
+
+---
+# ============================================
+# Example 4: Blue-Green Deployment
+# ============================================
+# Use case: Instant traffic switch between versions
+# ============================================
+
+nameOverride: "payment-service"
+
+image:
+  repository: myregistry/payment-service
+  tag: "v3.0.0"
+
+rollout:
+  enabled: true
+  replicas: 4
+  strategy:
+    type: blueGreen
+    blueGreen:
+      activeService: payment-service-active
+      previewService: payment-service-preview
+      autoPromotionEnabled: false
+      scaleDownDelaySeconds: 30
+
+service:
+  port: 443
+  targetPort: 8443
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+istio-routing:
+  enabled: true
+  ingress:
+    enabled: true
+    path: /payment
+    pathType: Prefix
+  trafficRouting:
+    enabled: false  # Blue-Green doesn't use gradual traffic splitting
+
+kargo-config:
+  enabled: false
+
+---
+# ============================================
+# Example 5: Microservice with Custom Health Checks
+# ============================================
+
+nameOverride: "user-service"
+
+image:
+  repository: myregistry/user-service
+  tag: "v1.5.0"
+
+rollout:
+  enabled: true
+  replicas: 3
+
+service:
+  port: 8080
+  targetPort: 8080
+
+# Custom environment variables
+env:
+  - name: DATABASE_URL
+    value: "postgres://db.default.svc.cluster.local:5432/users"
+  - name: REDIS_URL
+    value: "redis://redis.default.svc.cluster.local:6379"
+  - name: JWT_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: user-service-secrets
+        key: jwt-secret
+
+# Custom health checks
+livenessProbe:
+  httpGet:
+    path: /health/live
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health/ready
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+resources:
+  limits:
+    cpu: 300m
+    memory: 384Mi
+  requests:
+    cpu: 100m
+    memory: 192Mi
+
+istio-routing:
+  enabled: true
+  ingress:
+    path: /users
+    pathType: Prefix
+  trafficRouting:
+    enabled: true
+
+kargo-config:
+  enabled: false

@@ -1,0 +1,42 @@
+{{- if and .Values.enabled .Values.peerAuthentication.enabled }}
+#
+# ISTIO PEER AUTHENTICATION
+# Purpose: Configures mutual TLS (mTLS) for service-to-service communication within the mesh
+# Renders: When both .Values.enabled and .Values.peerAuthentication.enabled are true
+#
+# What it does:
+# - Enforces mTLS encryption between services in the mesh
+# - Controls whether plaintext traffic is allowed (PERMISSIVE) or blocked (STRICT)
+# - Provides identity verification between services using certificates
+# - Can be configured per-port for gradual migration
+#
+# Key concepts:
+# - STRICT: Only encrypted mTLS traffic allowed (recommended for production)
+# - PERMISSIVE: Accepts both mTLS and plaintext (useful during migration)
+# - DISABLE: No mTLS enforcement (not recommended)
+# - portLevelMtls: Override mTLS mode for specific ports
+#
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: {{ include "istio-routing.fullname" . }}
+  labels:
+    {{- include "istio-routing.labels" . | nindent 4 }}
+spec:
+  # Selector targets pods with these labels to apply mTLS policy
+  selector:
+    matchLabels:
+      {{- include "istio-routing.selectorLabels" . | nindent 6 }}
+  # Global mTLS mode for this workload
+  # STRICT: Only mTLS | PERMISSIVE: mTLS or plaintext | DISABLE: No mTLS
+  mtls:
+    mode: {{ .Values.peerAuthentication.mode }}
+  {{- if .Values.peerAuthentication.portLevelMtls }}
+  # Port-specific mTLS overrides (useful for gradual rollout)
+  portLevelMtls:
+    {{- range $port, $config := .Values.peerAuthentication.portLevelMtls }}
+    {{ $port }}:
+      mode: {{ $config.mode }}
+    {{- end }}
+  {{- end }}
+{{- end }}

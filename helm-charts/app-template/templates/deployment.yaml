@@ -1,0 +1,121 @@
+{{- if not (index .Values "argo-rollouts" "enabled") }}
+#
+# KUBERNETES DEPLOYMENT
+# Purpose: Standard Kubernetes Deployment for basic application deployments
+# Renders: When argo-rollouts.enabled=false (default deployment mode)
+#
+# What it does:
+# - Creates ReplicaSet to manage pod replicas
+# - Provides rolling updates with configurable strategies
+# - Manages pod lifecycle and health checks
+# - Integrates with HPA for autoscaling (replicas field omitted when HPA enabled)
+#
+# Key concepts:
+# - replicas: Number of pod instances (omitted when autoscaling enabled)
+# - selector: Matches pods managed by this Deployment
+# - template: Pod specification (containers, volumes, probes, etc.)
+# - strategy: Update strategy (RollingUpdate or Recreate)
+#
+# When to use:
+# - Standard deployments without progressive delivery
+# - Applications that don't need canary or blue-green deployments
+# - When Argo Rollouts features aren't required
+#
+# Alternative: Use Argo Rollouts (argo-rollouts.enabled=true) for:
+# - Canary deployments with traffic shifting
+# - Blue-green deployments
+# - Analysis-driven progressive delivery
+#
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "app-template.fullname" . }}
+  labels:
+    {{- include "app-template.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  # Replica count - omitted when HPA is enabled to avoid conflicts
+  # Replica count - omitted when HPA is enabled to avoid conflicts
+  replicas: {{ index .Values "argo-rollouts" "replicas" }}
+  {{- end }}
+  # Selector matches pods that this Deployment manages
+  selector:
+    matchLabels:
+      {{- include "app-template.selectorLabels" . | nindent 6 }}
+  # Pod template specification
+  template:
+    metadata:
+      annotations:
+        {{- if index .Values "argo-rollouts" "istio" "inject" }}
+        # Enable Istio sidecar injection for service mesh features
+        sidecar.istio.io/inject: "true"
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        # Additional pod annotations from values
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        # Pod labels - must match selector above
+        {{- include "app-template.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      # Secrets for pulling images from private registries
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # ServiceAccount for pod identity (RBAC, Istio identity)
+      serviceAccountName: {{ include "app-template.serviceAccountName" . }}
+      # Pod-level security context (fsGroup, runAsUser, etc.)
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        # Container-level security context (capabilities, readOnlyRootFilesystem, etc.)
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        # Container image (repository:tag)
+        image: "{{ index .Values "argo-rollouts" "image" "repository" }}:{{ index .Values "argo-rollouts" "image" "tag" | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ index .Values "argo-rollouts" "image" "pullPolicy" }}
+        ports:
+        - name: http
+          # Container port - must match Service targetPort
+          containerPort: {{ .Values.service.targetPort }}
+          protocol: TCP
+        {{- if index .Values "argo-rollouts" "livenessProbe" }}
+        # Liveness probe - restarts container if unhealthy
+        # Checks if application is running (not deadlocked)
+        livenessProbe:
+          {{- toYaml (index .Values "argo-rollouts" "livenessProbe") | nindent 12 }}
+        {{- end }}
+        {{- if index .Values "argo-rollouts" "readinessProbe" }}
+        # Readiness probe - removes pod from Service endpoints if not ready
+        # Checks if application can handle traffic (dependencies ready)
+        readinessProbe:
+          {{- toYaml (index .Values "argo-rollouts" "readinessProbe") | nindent 12 }}
+        {{- end }}
+        # Resource requests and limits (CPU, memory)
+        # Requests: Guaranteed resources for scheduling
+        # Limits: Maximum resources (throttle/OOM if exceeded)
+        resources:
+          {{- toYaml (index .Values "argo-rollouts" "resources") | nindent 12 }}
+        {{- with (index .Values "argo-rollouts" "env") }}
+        # Environment variables for the container
+        env:
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      # Node selector - schedule pods on nodes with matching labels
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      # Affinity rules - advanced pod scheduling (co-location, anti-affinity)
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      # Tolerations - allow pods to schedule on tainted nodes
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

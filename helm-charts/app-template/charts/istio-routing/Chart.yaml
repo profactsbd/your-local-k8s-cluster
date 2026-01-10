@@ -1,0 +1,11 @@
+apiVersion: v2
+name: istio-routing
+description: Istio routing components (VirtualService and DestinationRule) for application traffic management
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - istio
+  - service-mesh
+  - traffic-routing
+  - virtualservice

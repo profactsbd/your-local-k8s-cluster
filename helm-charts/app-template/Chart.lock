@@ -1,0 +1,12 @@
+dependencies:
+- name: argo-rollouts
+  repository: file://./charts/argo-rollouts
+  version: 1.0.0
+- name: istio-routing
+  repository: file://./charts/istio-routing
+  version: 1.0.0
+- name: kargo-config
+  repository: file://./charts/kargo-config
+  version: 1.0.0
+digest: sha256:34259abb4a9824b4fab906c365b4cb32339d1783bb4cd8a8288abf984f69e2c5
+generated: "2026-01-09T14:36:35.5694809-08:00"

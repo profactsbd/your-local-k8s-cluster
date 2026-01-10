@@ -1,0 +1,91 @@
+{{- if .Values.enabled }}
+{{- range .Values.stages }}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "kargo-config.fullname" $ }}-test-{{ .name }}
+  namespace: {{ .namespace | default $.Values.project.namespace }}
+  labels:
+    {{- include "kargo-config.labels" $ | nindent 4 }}
+    test-stage: {{ .name }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  serviceAccountName: {{ include "kargo-config.fullname" $ }}-test
+  containers:
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command:
+    - /bin/sh
+    - -c
+    - |
+      echo "Testing Kargo Stage: {{ .name }}..."
+      kubectl get stage {{ .name }} -n {{ .namespace | default $.Values.project.namespace }}
+      if [ $? -eq 0 ]; then
+        echo "✓ Stage '{{ .name }}' exists"
+        
+        echo "Checking Stage configuration..."
+        STAGE_NAME=$(kubectl get stage {{ .name }} -n {{ .namespace | default $.Values.project.namespace }} -o jsonpath='{.metadata.name}')
+        echo "✓ Stage name: $STAGE_NAME"
+        
+        # Check if promotion mechanisms are configured
+        PROMO_MECHANISMS=$(kubectl get stage {{ .name }} -n {{ .namespace | default $.Values.project.namespace }} -o jsonpath='{.spec.promotionMechanisms}')
+        if [ -n "$PROMO_MECHANISMS" ]; then
+          echo "✓ Promotion mechanisms configured"
+        else
+          echo "⚠ No promotion mechanisms configured"
+        fi
+        
+        exit 0
+      else
+        echo "✗ Stage '{{ .name }}' not found"
+        exit 1
+      fi
+  restartPolicy: Never
+{{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "kargo-config.fullname" . }}-test
+  namespace: {{ .Values.project.namespace }}
+  labels:
+    {{- include "kargo-config.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kargo-config.fullname" . }}-test
+  labels:
+    {{- include "kargo-config.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+- apiGroups: ["kargo.akuity.io"]
+  resources: ["stages"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kargo-config.fullname" . }}-test
+  labels:
+    {{- include "kargo-config.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kargo-config.fullname" . }}-test
+subjects:
+- kind: ServiceAccount
+  name: {{ include "kargo-config.fullname" . }}-test
+  namespace: {{ .Values.project.namespace }}
+{{- end }}

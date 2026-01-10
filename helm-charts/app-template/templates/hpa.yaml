@@ -1,0 +1,113 @@
+{{- if and (not (index .Values "argo-rollouts" "enabled")) .Values.autoscaling.enabled }}
+#
+# HORIZONTAL POD AUTOSCALER (HPA)
+# Purpose: Automatically scales pod replicas based on CPU/Memory utilization
+# Renders: When argo-rollouts.enabled=false AND autoscaling.enabled=true
+#
+# What it does:
+# - Monitors pod metrics (CPU, Memory) and adjusts replica count
+# - Scales up when utilization exceeds target threshold
+# - Scales down when utilization is below target (with stabilization)
+# - Prevents thrashing with configurable scaling behavior
+#
+# Intelligent API Version Detection:
+# - autoscaling/v2 (Kubernetes 1.23+): Full feature set with behavior policies
+# - autoscaling/v2beta2 (K8s 1.18-1.22): Memory metrics, behavior policies
+# - autoscaling/v2beta1 (K8s <1.18): Basic CPU metrics only
+#
+# Key concepts:
+# - scaleTargetRef: Which Deployment to scale
+# - minReplicas/maxReplicas: Replica count boundaries
+# - metrics: CPU and/or Memory targets (percentage of requests)
+# - behavior: Scaling policies (stabilization, rate limiting)
+#
+# Best practices:
+# - Set resource requests on containers (required for percentage-based metrics)
+# - Use conservative thresholds to avoid frequent scaling
+# - Configure scaleDown stabilization to prevent flapping
+# - Monitor HPA events: kubectl describe hpa <name>
+#
+{{- $kubeVersion := .Capabilities.KubeVersion.Version }}
+{{- $apiVersion := "autoscaling/v2" }}
+# Detect best available HPA API version for this cluster
+{{- if .Capabilities.APIVersions.Has "autoscaling/v2" }}
+  {{- $apiVersion = "autoscaling/v2" }}
+{{- else if .Capabilities.APIVersions.Has "autoscaling/v2beta2" }}
+  {{- $apiVersion = "autoscaling/v2beta2" }}
+{{- else }}
+  {{- $apiVersion = "autoscaling/v2beta1" }}
+{{- end }}
+apiVersion: {{ $apiVersion }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "app-template.fullname" . }}
+  labels:
+    {{- include "app-template.labels" . | nindent 4 }}
+spec:
+  # Target resource to scale (Deployment in this case)
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "app-template.fullname" . }}
+  # Minimum number of replicas (never scale below this)
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  # Maximum number of replicas (never scale above this)
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  {{- if eq $apiVersion "autoscaling/v2" }}
+  # Metrics configuration for autoscaling/v2 (Kubernetes 1.23+)
+  # Supports Resource metrics (CPU, Memory) and custom metrics
+  metrics:
+    {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+    # CPU metric - scale when CPU utilization exceeds target percentage
+    # Percentage of requested CPU (not limits)
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    # Memory metric - scale when memory utilization exceeds target percentage
+    # Percentage of requested memory (not limits)
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+  {{- else if eq $apiVersion "autoscaling/v2beta2" }}
+  # Metrics configuration for autoscaling/v2beta2 (Kubernetes 1.18-1.22)
+  # Supports CPU and Memory metrics
+  metrics:
+    {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+  {{- else }}
+  # Metrics configuration for autoscaling/v2beta1 (Kubernetes <1.18)
+  # Only supports CPU metric
+  {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+  targetCPUUtilizationPercentage: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+  {{- end }}
+  {{- end }}
+  {{- with .Values.autoscaling.behavior }}
+  # Scaling behavior policies (v2 and v2beta2 only)
+  # Controls scale-up/scale-down rates and stabilization windows
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
